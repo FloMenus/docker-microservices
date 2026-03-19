@@ -1,0 +1,126 @@
+services:
+  mongodb-auth:
+    image: mongo:6
+    volumes:
+      - mongodb-auth-data:/data/db
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mongodb-product:
+    image: mongo:6
+    volumes:
+      - mongodb-product-data:/data/db
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mongodb-order:
+    image: mongo:6
+    volumes:
+      - mongodb-order-data:/data/db
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    volumes:
+      - ./services/auth-service:/app
+      - /app/node_modules
+    environment:
+      PORT: 3001
+      MONGODB_URI: mongodb://mongodb-auth:27017/auth
+      JWT_SECRET: ${JWT_SECRET:-ecommerce_secret_key}
+      NODE_ENV: development
+    depends_on:
+      mongodb-auth:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    volumes:
+      - ./services/product-service:/app
+      - /app/node_modules
+    environment:
+      PORT: 3000
+      MONGODB_URI: mongodb://mongodb-product:27017/ecommerce
+      JWT_SECRET: ${JWT_SECRET:-ecommerce_secret_key}
+      NODE_ENV: development
+    depends_on:
+      mongodb-product:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    volumes:
+      - ./services/order-service:/app
+      - /app/node_modules
+    environment:
+      PORT: 3002
+      MONGODB_URI: mongodb://mongodb-order:27017/orders
+      JWT_SECRET: ${JWT_SECRET:-ecommerce_secret_key}
+      NODE_ENV: development
+    depends_on:
+      mongodb-order:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+    networks:
+      - ecommerce-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - auth-service
+      - product-service
+      - order-service
+    networks:
+      - ecommerce-network
+
+networks:
+  ecommerce-network:
+    driver: bridge
+
+volumes:
+  mongodb-auth-data:
+  mongodb-product-data:
+  mongodb-order-data:
