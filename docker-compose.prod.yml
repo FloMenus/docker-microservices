@@ -1,0 +1,209 @@
+services:
+
+  mongodb-auth:
+    image: mongo:6
+    volumes:
+      - mongodb-auth-data:/data/db
+    networks:
+      - ecommerce-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mongodb-product:
+    image: mongo:6
+    volumes:
+      - mongodb-product-data:/data/db
+    networks:
+      - ecommerce-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mongodb-order:
+    image: mongo:6
+    volumes:
+      - mongodb-order-data:/data/db
+    networks:
+      - ecommerce-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-localhost}/auth-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 3001
+      MONGODB_URI: mongodb://mongodb-auth:27017/auth
+      JWT_SECRET: ${JWT_SECRET}
+      NODE_ENV: production
+    depends_on:
+      mongodb-auth:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-localhost}/product-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 3000
+      MONGODB_URI: mongodb://mongodb-product:27017/ecommerce
+      JWT_SECRET: ${JWT_SECRET}
+      NODE_ENV: production
+    depends_on:
+      mongodb-product:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-localhost}/order-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 3002
+      MONGODB_URI: mongodb://mongodb-order:27017/orders
+      JWT_SECRET: ${JWT_SECRET}
+      VITE_PRODUCT_SERVICE_URL: http://product-service:3000
+      NODE_ENV: production
+    depends_on:
+      mongodb-order:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+    networks:
+      - ecommerce-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: ${REGISTRY:-localhost}/frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - product-service
+      - order-service
+    networks:
+      - ecommerce-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  ecommerce-network:
+    driver: bridge
+
+volumes:
+  mongodb-auth-data:
+  mongodb-product-data:
+  mongodb-order-data:
