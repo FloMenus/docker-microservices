@@ -1,17 +1,26 @@
-FROM node:20-alpine
-
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-RUN chown appuser:appgroup /app
-
-COPY --chown=appuser:appgroup package.json package-lock.json* ./
-
-USER appuser
-
+COPY package.json package-lock.json* ./
 RUN npm install --ignore-scripts
+
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+RUN chown -R nginx:nginx /usr/share/nginx/html \
+    && chown -R nginx:nginx /var/cache/nginx \
+    && chown -R nginx:nginx /var/log/nginx \
+    && touch /var/run/nginx.pid \
+    && chown nginx:nginx /var/run/nginx.pid
+
+USER nginx
 
 EXPOSE 8080
 
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["nginx", "-g", "daemon off;"]
