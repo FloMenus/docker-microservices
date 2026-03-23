@@ -171,6 +171,24 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  init-products:
+    image: alpine
+    volumes:
+      - ./scripts/init-products.sh:/init-products.sh
+    command: >
+      sh -c "apk add --no-cache curl bash &&
+             sed 's|http://localhost:3000|http://product-service:3000|g' /init-products.sh | bash"
+    depends_on:
+      product-service:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: none
+    restart: "no"
+
   frontend:
     build:
       context: ./frontend
